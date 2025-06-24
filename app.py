@@ -1,70 +1,73 @@
-import datetime
+"""Flask application for car price prediction."""
 
-from flask import Flask, render_template, request
-import jsonify
-import requests
+import datetime
 import pickle
+from pathlib import Path
+
 import numpy as np
-import sklearn
-from sklearn.preprocessing import StandardScaler
+from flask import Flask, render_template, request
+
+
+MODEL_PATH = Path("random_forest_regression_model_org.pkl")
+
+
+def load_model():
+    """Load the pre-trained model from disk."""
+    with MODEL_PATH.open("rb") as f:
+        return pickle.load(f)
+
 
 app = Flask(__name__)
-model = pickle.load(open('random_forest_regression_model_org.pkl', 'rb'))
+model = load_model()
 
 
-@app.route('/', methods=['GET'])
-def Home():
-    return render_template('car/index.html')
+@app.route("/", methods=["GET"])
+def home():
+    """Render the main page."""
+    return render_template("car/index.html")
 
 
-standard_to = StandardScaler()
-
-
-@app.route("/predict", methods=['POST'])
+@app.route("/predict", methods=["POST"])
 def predict():
-    Fuel_Type_Diesel = 0
-    if request.method == 'POST':
-        Present_Price = request.form['Present_Price']
-        Year = int(request.form['Year'])
-        Present_Price = float(request.form['Present_Price'])
-        Kms_Driven = int(request.form['kms_driven'])
-        Kms_Driven2 = np.log(Kms_Driven)
-        Owner = int(request.form['Owner'])
-        Fuel_Type_Petrol = request.form['Fuel_Type_Petrol']
-        if (Fuel_Type_Petrol == 'Petrol'):
-            Fuel_Type_Petrol = 1
-            Fuel_Type_Diesel = 0
-        else:
-            Fuel_Type_Petrol = 0
-            Fuel_Type_Diesel = 1
-        #Year = 2022 - Year
-        date = datetime.date.today()
-        Now = date.strftime("%Y")
-        Year = int(Now) - Year
-        print(Year)
+    """Predict car selling price based on form data."""
+    form = request.form
+    present_price = float(form["Present_Price"])
+    year = int(form["Year"])
+    kms_driven = int(form["kms_driven"])
+    owner = int(form["Owner"])
 
-        Seller_Type_Individual = request.form['Seller_Type_Individual']
-        if (Seller_Type_Individual == 'Individual'):
-            Seller_Type_Individual = 1
-        else:
-            Seller_Type_Individual = 0
-        Transmission_Mannual = request.form['Transmission_Mannual']
-        if (Transmission_Mannual == 'Manual'):
-            Transmission_Mannual = 1
-        else:
-            Transmission_Mannual = 0
-        prediction = model.predict([[Present_Price, Kms_Driven, Owner, Year, Fuel_Type_Diesel, Fuel_Type_Petrol,
-                                     Seller_Type_Individual, Transmission_Mannual]])
-        output = round(prediction[0], 2)
+    fuel_type_petrol = form["Fuel_Type_Petrol"] == "Petrol"
+    fuel_type_diesel = 0 if fuel_type_petrol else 1
+    fuel_type_petrol = int(fuel_type_petrol)
 
-        print(output)
-        if output < 0:
-            return render_template('car/index.html', prediction_texts="Sorry you cannot sell this car")
-        else:
-            return render_template('car/index.html', prediction_text="You Can Sell The Car at {}".format(output),
-                                   )
-    else:
-        return render_template('car/index.html')
+    current_year = datetime.date.today().year
+    year = current_year - year
+
+    seller_type_individual = int(form["Seller_Type_Individual"] == "Individual")
+    transmission_manual = int(form["Transmission_Mannual"] == "Manual")
+
+    features = [
+        present_price,
+        kms_driven,
+        owner,
+        year,
+        fuel_type_diesel,
+        fuel_type_petrol,
+        seller_type_individual,
+        transmission_manual,
+    ]
+
+    prediction = model.predict([features])
+    output = round(prediction[0], 2)
+
+    if output < 0:
+        return render_template("car/index.html", prediction_texts="Sorry you cannot sell this car")
+
+    return render_template(
+        "car/index.html",
+        prediction_text=f"You Can Sell The Car at {output}",
+    )
+
 
 if __name__ == "__main__":
     app.run(debug=True)
